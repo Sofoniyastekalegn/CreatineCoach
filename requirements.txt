@@ -1,0 +1,8 @@
+flask==3.0.3
+python-dotenv==1.0.1
+voyageai==0.3.2
+pinecone-client[grpc]==5.0.1
+google-genai==0.3.0
+pypdf==5.0.1
+gunicorn==23.0.0
+numpy==2.1.3
