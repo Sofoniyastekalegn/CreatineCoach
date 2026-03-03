@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 
 from pypdf import PdfReader
 
-import voyageai
 from pinecone import Pinecone
 from google import genai
 
@@ -31,19 +30,16 @@ def get_env_or_error(name: str) -> str:
 
 
 def init_clients():
-    voyage_api_key = get_env_or_error("VOYAGE_API_KEY")
     pinecone_api_key = get_env_or_error("PINECONE_API_KEY")
     pinecone_index_host = get_env_or_error("PINECONE_INDEX")
     gemini_api_key = get_env_or_error("GEMINI_API_KEY")
-
-    voyage_client = voyageai.Client(api_key=voyage_api_key)
 
     pc = Pinecone(api_key=pinecone_api_key)
     pinecone_index = pc.Index(host=pinecone_index_host)
 
     gemini_client = genai.Client(api_key=gemini_api_key)
 
-    return voyage_client, pinecone_index, gemini_client
+    return pinecone_index, gemini_client
 
 
 def chunk_text(text: str, page_number: int, chunk_size: int = 800, overlap: int = 200):
@@ -87,16 +83,17 @@ def extract_pdf_chunks(pdf_path: str):
     return all_chunks
 
 
-def embed_chunks(voyage_client, chunks, model: str = "voyage-4"):
+def embed_chunks(gemini_client, chunks, model: str = "gemini-embedding-001"):
     texts = [c["text"] for c in chunks]
     if not texts:
         return []
-    response = voyage_client.embed(
-        texts=texts,
+
+    response = gemini_client.models.embed_content(
         model=model,
-        input_type="document",
+        contents=texts,
     )
-    embeddings = response.embeddings
+    embeddings = [e.values for e in response.embeddings]
+
     for chunk, emb in zip(chunks, embeddings):
         chunk["embedding"] = emb
     return chunks
@@ -124,13 +121,12 @@ def upsert_chunks(pinecone_index, chunks, namespace: str):
     return result.get("upsertedCount", 0)
 
 
-def query_chunks(voyage_client, pinecone_index, question: str, namespace: str, top_k: int = 6):
-    embed = voyage_client.embed(
-        texts=[question],
-        model="voyage-4",
-        input_type="query",
+def query_chunks(gemini_client, pinecone_index, question: str, namespace: str, top_k: int = 6):
+    embed = gemini_client.models.embed_content(
+        model="gemini-embedding-001",
+        contents=[question],
     )
-    query_vec = embed.embeddings[0]
+    query_vec = embed.embeddings[0].values
     result = pinecone_index.query(
         vector=query_vec,
         top_k=top_k,
@@ -254,7 +250,7 @@ def get_session(session_id):
 @app.route("/api/upload_pdf", methods=["POST"])
 def upload_pdf():
     try:
-        voyage_client, pinecone_index, _ = init_clients()
+        pinecone_index, gemini_client = init_clients()
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 500
 
@@ -273,10 +269,17 @@ def upload_pdf():
 
     try:
         chunks = extract_pdf_chunks(save_path)
-        chunks = embed_chunks(voyage_client, chunks)
+        chunks = embed_chunks(gemini_client, chunks)
         upserted = upsert_chunks(pinecone_index, chunks, namespace=doc_id)
     except Exception as e:
-        return jsonify({"error": f"Failed to process PDF: {e}"}), 500
+        return jsonify(
+            {
+                "error": (
+                    "Failed to process PDF for ingestion. "
+                    f"Embedding or vector store error: {e}"
+                )
+            }
+        ), 500
 
     return jsonify({"doc_id": doc_id, "chunks_indexed": upserted})
 
@@ -296,7 +299,7 @@ def chat():
         return jsonify({"error": "doc_id (PDF namespace) is required"}), 400
 
     try:
-        voyage_client, pinecone_index, gemini_client = init_clients()
+        pinecone_index, gemini_client = init_clients()
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 500
 
@@ -305,7 +308,7 @@ def chat():
 
     try:
         retrieved_chunks = query_chunks(
-            voyage_client,
+            gemini_client,
             pinecone_index,
             question=question,
             namespace=doc_id,
