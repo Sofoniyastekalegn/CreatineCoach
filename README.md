@@ -1,36 +1,28 @@
-Creatine Coach – Short README
+# Creatine Coach – RAG Chatbot Demo
 
-Creatine Coach is a tiny RAG demo that answers questions about the paper "Creatine Supplementation for Muscle Growth". You upload the PDF once, it gets indexed, and then you can chat with a bot that stays grounded in the paper instead of making things up.
+PDF Q&A chatbot using RAG: Flask + Pinecone + Gemini + Voyage
 
-1. Quick setup
-
-- Create venv and install (from project root):
+## Quick Start
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate  # Windows PowerShell
+# Setup
+python -m venv .venv && source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt
-```
+cp .env.example .env  # add your API keys
 
-- Environment variables
-
-Copy `.env.example` to `.env` and fill in your keys for Voyage, Pinecone and Gemini (see example fields in `.env.example`). Do not commit real keys.
-
-2. Run the app
-
-```bash
+# Run
 flask --app app run --debug
-# or
-python app.py
+# Open http://localhost:5000
 ```
 
-Open `http://localhost:5000` in your browser.
+## How It Works
+1. **Upload PDF** → Chunked (~800 chars, 200 overlap) → Embeddings (Voyage) → Pinecone
+2. **Ask question** → Retrieve top-6 chunks → Gemini generates grounded answer with citations
+3. **Session memory** (JSON files) enables follow-up questions
 
-3. How to use
+## API Endpoints
+- `POST /api/session` – new conversation
+- `POST /api/upload_pdf` – index PDF (returns `doc_id`)
+- `POST /api/chat` – ask question (`{session_id, doc_id, question}`)
 
-- Create a session.
-- Upload the creatine PDF to index it.
-- Ask questions about the paper. The bot answers using retrieved excerpts, with light citations, and remembers a short conversation history.
-
-For more implementation details (chunking, retrieval, memory), read the code in `app.py` and related modules.
-
+The assistant only answers using retrieved passages—no hallucinations.
