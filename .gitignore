@@ -4,3 +4,4 @@ sessions/
 __pycache__/
 *.pyc
 
+.vercel
