@@ -1,4 +1,6 @@
 flask==3.0.3
+fastapi==0.115.6
+uvicorn[standard]==0.32.0
 python-dotenv==1.0.1
 voyageai==0.3.2
 pinecone-client[grpc]==5.0.1
